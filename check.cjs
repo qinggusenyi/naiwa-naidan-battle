@@ -17,6 +17,12 @@ assert.ok(arenaAsset,'arena background asset');
 for(const name of [...run('Object.values(ACTORS).flatMap(actor=>[actor.img,actor.attackImg,actor.wave].filter(Boolean))'),arenaAsset]){
   assert.ok(fs.existsSync(__dirname+'/'+name),`missing asset: ${name}`);
 }
+assert.equal(run('ENGLISH.every(([word])=>WORD_AUDIO[word])'),true,'each English word needs recorded audio');
+for(const name of run('Object.values(WORD_AUDIO)'))assert.ok(fs.existsSync(__dirname+'/'+name),`missing audio: ${name}`);
+const played=[];
+context.Audio=class{constructor(src){this.src=src}play(){played.push(this.src);return Promise.resolve()}pause(){}};
+run('game.q.left=englishQ("left");speak("left")');
+assert.equal(played[0],run('game.q.left.audio'),'pronunciation button should play the packaged recording');
 const levels=run('LEVELS.map(level=>({id:level.id,label:level.label}))');
 assert.ok(levels.length>0);
 assert.equal(new Set(levels.map(level=>String(level.id))).size,levels.length);
@@ -118,4 +124,4 @@ assert.equal(run('game.q.left.choices.length'),4);
 run("setGrade('senior')");begin();
 assert.equal(run('game.q.left.type'),'物理');
 assert.equal(run('game.q.left.answer'),'牛顿');
-console.log('PASS: assets, default/custom questions, custom levels, READY/GO, waves, damage, finish, demo, home and restart');
+console.log('PASS: assets, English audio, default/custom questions, custom levels, READY/GO, waves, damage, finish, demo, home and restart');
