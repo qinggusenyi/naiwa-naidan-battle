@@ -2,10 +2,6 @@ const fs=require('node:fs'),vm=require('node:vm'),assert=require('node:assert/st
 const html=fs.readFileSync(__dirname+'/index.html','utf8');
 const code=html.split('<script>')[1].split('</script>')[0];
 new vm.Script(code);
-for(const name of ['奶蛙-play.webp','奶蛋-play.webp','frog-attack-play.webp','arena-play.webp','frog-wave-play.webp','egg-wave-play.webp']){
-  assert.ok(fs.existsSync(__dirname+'/'+name));
-  assert.ok(html.includes(name));
-}
 const timers=[];
 const el=()=>({style:{},classList:{add(){},remove(){},toggle(){}},appendChild(){},append(){},remove(){},disabled:false,textContent:'',innerHTML:''});
 const nodes=new Map(),app=el();
@@ -16,6 +12,28 @@ const context=vm.createContext({document,window:{},Date,console,Image:class{deco
 vm.runInContext(code,context);
 const run=s=>vm.runInContext(s,context),drain=()=>{let n=0;while(timers.length){assert.ok(n++<1500,'timer loop');timers.shift()()}};
 const begin=()=>{assert.equal(run('game.countdown'),true);assert.equal(run('game.matchDeadline'),0);timers.shift()();assert.equal(run('game.countdown'),true);timers.shift()();assert.equal(run('game.countdown'),false);assert.ok(run('game.matchDeadline')>Date.now())};
+const arenaAsset=html.match(/\.arena\{background:[^}]*url\(['"]?([^'"\)]+)/)?.[1];
+assert.ok(arenaAsset,'arena background asset');
+for(const name of [...run('Object.values(ACTORS).flatMap(actor=>[actor.img,actor.attackImg,actor.wave].filter(Boolean))'),arenaAsset]){
+  assert.ok(fs.existsSync(__dirname+'/'+name),`missing asset: ${name}`);
+}
+const levels=run('LEVELS.map(level=>({id:level.id,label:level.label}))');
+assert.ok(levels.length>0);
+assert.equal(new Set(levels.map(level=>String(level.id))).size,levels.length);
+assert.equal(run('game.grade'),levels[0].id);
+assert.equal(run("escapeHTML('2 < 5 & 7')"),'2 &lt; 5 &amp; 7');
+for(const level of levels){
+  assert.ok(String(level.label).trim());
+  const bank=run(`QUESTION_BANK[${JSON.stringify(level.id)}]`);
+  if(!bank?.length){assert.ok([1,2,3].includes(level.id),`missing question bank: ${level.id}`);continue}
+  for(const q of bank){
+    assert.ok(q.type&&q.prompt,`missing question type or prompt: ${level.id}`);
+    assert.equal(q.choices.length,4,`question needs 4 choices: ${level.id}`);
+    assert.equal(new Set(q.choices.map(String)).size,4,`duplicate choices: ${level.id}`);
+    assert.ok(q.choices.map(String).includes(String(q.answer)),`answer missing from choices: ${level.id}`);
+  }
+}
+run("LEVELS.splice(0,LEVELS.length,{id:1,label:'1 年级'},{id:2,label:'2 年级'},{id:3,label:'3 年级'});for(const id of Object.keys(QUESTION_BANK))delete QUESTION_BANK[id];game.grade=1;home()");
 for(let grade=1;grade<=3;grade++){
   run(`game.grade=${grade}`);
   for(let i=0;i<40;i++)for(const code of ['mathQ()','englishQ("left")','idiomQ("right")']){
@@ -84,5 +102,20 @@ assert.equal(run('game.grade'),2);
 assert.equal(run('game.started'),true);
 assert.equal(run('game.round.left'),1);
 assert.equal(run('game.hp.right'),100);
-assert.ok(html.includes('选择年级')&&html.includes('返回首页'));
-console.log('PASS: assets, questions, READY/GO, waves, damage, finish, demo, home, grade selection and restart');
+assert.ok(html.includes('返回首页'));
+drain();
+run(`LEVELS.splice(0,LEVELS.length,{id:'junior',label:'初一'},{id:'senior',label:'高一'});
+QUESTION_BANK.junior=[{type:'数学',art:'2x+3=11',prompt:'求 x',choices:['2','3','4','5'],answer:'4'},{type:'历史',art:'秦',prompt:'秦朝的都城？',choices:['咸阳','长安','洛阳','开封'],answer:'咸阳'}];
+QUESTION_BANK.senior=[{type:'物理',art:'F=ma',prompt:'力的单位？',choices:['牛顿','焦耳','瓦特','帕斯卡'],answer:'牛顿'}];
+setGrade('junior')`);
+assert.equal(run('game.grade'),'junior');
+assert.ok(run('gradeOptions()').includes('初一'));
+begin();
+const firstCustom=run('game.q.left.key');
+run('nextQuestion("left")');
+assert.notEqual(run('game.q.left.key'),firstCustom,'自定义题库未抽完前避免重复');
+assert.equal(run('game.q.left.choices.length'),4);
+run("setGrade('senior')");begin();
+assert.equal(run('game.q.left.type'),'物理');
+assert.equal(run('game.q.left.answer'),'牛顿');
+console.log('PASS: assets, default/custom questions, custom levels, READY/GO, waves, damage, finish, demo, home and restart');
